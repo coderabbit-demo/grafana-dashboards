@@ -1,0 +1,527 @@
+{
+	"__inputs": [
+		{
+			"name": "DS_POSTGRESQL",
+			"label": "PostgreSQL",
+			"description": "",
+			"type": "datasource",
+			"pluginId": "grafana-postgresql-datasource",
+			"pluginName": "PostgreSQL"
+		}
+	],
+	"__elements": {},
+	"__requires": [
+		{
+			"type": "grafana",
+			"id": "grafana",
+			"name": "Grafana",
+			"version": "11.3.0-pre"
+		},
+		{
+			"type": "datasource",
+			"id": "grafana-postgresql-datasource",
+			"name": "PostgreSQL",
+			"version": "1.0.0"
+		},
+		{
+			"type": "panel",
+			"id": "timeseries",
+			"name": "Time series",
+			"version": ""
+		}
+	],
+	"annotations": {
+		"list": [
+			{
+				"builtIn": 1,
+				"datasource": {
+					"type": "grafana",
+					"uid": "-- Grafana --"
+				},
+				"enable": true,
+				"hide": true,
+				"iconColor": "rgba(0, 211, 255, 1)",
+				"name": "Annotations & Alerts",
+				"type": "dashboard"
+			}
+		]
+	},
+	"editable": true,
+	"fiscalYearStartMonth": 0,
+	"graphTooltip": 0,
+	"id": null,
+	"links": [],
+	"liveNow": false,
+	"panels": [
+		{
+			"datasource": {
+				"type": "grafana-postgresql-datasource",
+				"uid": "${DS_POSTGRESQL}"
+			},
+			"description": "Daily acceptance rate of CodeRabbit suggestions since the first PR was raised.",
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#25e2a8",
+						"mode": "fixed"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "Acceptance Rate (%)",
+						"axisPlacement": "auto",
+						"axisWidth": 50,
+						"barAlignment": 0,
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "smooth",
+						"lineWidth": 2,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"max": 100,
+					"min": 0,
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": null
+							}
+						]
+					},
+					"unit": "percent"
+				},
+				"overrides": [
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "Daily Rate"
+						},
+						"properties": [
+							{
+								"id": "color",
+								"value": {
+									"fixedColor": "#25e2a8",
+									"mode": "fixed"
+								}
+							},
+							{
+								"id": "custom.fillOpacity",
+								"value": 10
+							},
+							{
+								"id": "custom.lineWidth",
+								"value": 1
+							}
+						]
+					},
+					{
+						"matcher": {
+							"id": "byName",
+							"options": "7-Day Rolling Avg"
+						},
+						"properties": [
+							{
+								"id": "color",
+								"value": {
+									"fixedColor": "#ff6600",
+									"mode": "fixed"
+								}
+							},
+							{
+								"id": "custom.fillOpacity",
+								"value": 0
+							},
+							{
+								"id": "custom.lineWidth",
+								"value": 3
+							}
+						]
+					}
+				]
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 12,
+				"x": 0,
+				"y": 0
+			},
+			"id": 1,
+			"options": {
+				"legend": {
+					"calcs": ["mean", "last"],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"targets": [
+				{
+					"datasource": {
+						"type": "grafana-postgresql-datasource",
+						"uid": "${DS_POSTGRESQL}"
+					},
+					"editorMode": "code",
+					"format": "table",
+					"rawQuery": true,
+					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', sm.created_at) AS \"time\",\n  CASE \n    WHEN SUM(sm.total_suggestions) > 0 \n    THEN ROUND((SUM(sm.accepted_comment_count)::numeric / SUM(sm.total_suggestions)::numeric) * 100, 2)\n    ELSE 0 \n  END AS \"Daily Rate\"\nFROM suggestion_metrics sm\nCROSS JOIN first_pr fp\nWHERE sm.org_id = '$org_id'\n  AND sm.created_at >= fp.first_pr_date\n  AND $__timeFilter(sm.created_at)\nGROUP BY DATE_TRUNC('day', sm.created_at)\nORDER BY \"time\" ASC;",
+					"refId": "A"
+				},
+				{
+					"datasource": {
+						"type": "grafana-postgresql-datasource",
+						"uid": "${DS_POSTGRESQL}"
+					},
+					"editorMode": "code",
+					"format": "table",
+					"rawQuery": true,
+					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n),\ndaily_stats AS (\n  SELECT\n    DATE_TRUNC('day', sm.created_at) AS day,\n    SUM(sm.accepted_comment_count) AS accepted,\n    SUM(sm.total_suggestions) AS total\n  FROM suggestion_metrics sm\n  CROSS JOIN first_pr fp\n  WHERE sm.org_id = '$org_id'\n    AND sm.created_at >= fp.first_pr_date\n    AND $__timeFilter(sm.created_at)\n  GROUP BY DATE_TRUNC('day', sm.created_at)\n)\nSELECT\n  day AS \"time\",\n  CASE \n    WHEN SUM(total) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) > 0\n    THEN ROUND(\n      (SUM(accepted) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric /\n       SUM(total) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric) * 100, 2)\n    ELSE 0\n  END AS \"7-Day Rolling Avg\"\nFROM daily_stats\nORDER BY \"time\" ASC;",
+					"refId": "B"
+				}
+			],
+			"title": "Daily Acceptance Rate",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "grafana-postgresql-datasource",
+				"uid": "${DS_POSTGRESQL}"
+			},
+			"description": "Daily count of path instructions applied during reviews since the first PR was raised.",
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#838bff",
+						"mode": "fixed"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "Count",
+						"axisPlacement": "auto",
+						"axisWidth": 50,
+						"barAlignment": 0,
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "smooth",
+						"lineWidth": 2,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": null
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 12,
+				"x": 12,
+				"y": 0
+			},
+			"id": 2,
+			"options": {
+				"legend": {
+					"calcs": ["sum", "mean"],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"targets": [
+				{
+					"datasource": {
+						"type": "grafana-postgresql-datasource",
+						"uid": "${DS_POSTGRESQL}"
+					},
+					"editorMode": "code",
+					"format": "table",
+					"rawQuery": true,
+					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', re.\"createdAt\") AS \"time\",\n  COUNT(pim.id)::bigint AS \"Path Instructions Used\"\nFROM path_instructions_metrics pim\nJOIN review_metrics rm ON pim.review_metrics_id = rm.id\nJOIN review_event re ON rm.review_event_id = re.id\nCROSS JOIN first_pr fp\nWHERE pim.org_id = '$org_id'\n  AND re.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(re.\"createdAt\")\nGROUP BY DATE_TRUNC('day', re.\"createdAt\")\nORDER BY \"time\" ASC;",
+					"refId": "A"
+				}
+			],
+			"title": "Daily Path Instructions Used",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "grafana-postgresql-datasource",
+				"uid": "${DS_POSTGRESQL}"
+			},
+			"description": "Daily count of learnings created since the first PR was raised.",
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#ff9830",
+						"mode": "fixed"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "Count",
+						"axisPlacement": "auto",
+						"axisWidth": 50,
+						"barAlignment": 0,
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "smooth",
+						"lineWidth": 2,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": null
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 12,
+				"x": 0,
+				"y": 10
+			},
+			"id": 3,
+			"options": {
+				"legend": {
+					"calcs": ["sum", "mean"],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"targets": [
+				{
+					"datasource": {
+						"type": "grafana-postgresql-datasource",
+						"uid": "${DS_POSTGRESQL}"
+					},
+					"editorMode": "code",
+					"format": "table",
+					"rawQuery": true,
+					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', l.\"createdAt\") AS \"time\",\n  COUNT(l.id)::bigint AS \"Learnings Created\"\nFROM learnings l\nCROSS JOIN first_pr fp\nWHERE l.org_id = '$org_id'\n  AND l.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(l.\"createdAt\")\nGROUP BY DATE_TRUNC('day', l.\"createdAt\")\nORDER BY \"time\" ASC;",
+					"refId": "A"
+				}
+			],
+			"title": "Daily Learnings Created",
+			"type": "timeseries"
+		},
+		{
+			"datasource": {
+				"type": "grafana-postgresql-datasource",
+				"uid": "${DS_POSTGRESQL}"
+			},
+			"description": "Daily count of learnings applied during reviews since the first PR was raised.",
+			"fieldConfig": {
+				"defaults": {
+					"color": {
+						"fixedColor": "#e24d42",
+						"mode": "fixed"
+					},
+					"custom": {
+						"axisBorderShow": false,
+						"axisCenteredZero": false,
+						"axisColorMode": "text",
+						"axisLabel": "Count",
+						"axisPlacement": "auto",
+						"axisWidth": 50,
+						"barAlignment": 0,
+						"drawStyle": "line",
+						"fillOpacity": 10,
+						"gradientMode": "none",
+						"hideFrom": {
+							"legend": false,
+							"tooltip": false,
+							"viz": false
+						},
+						"insertNulls": false,
+						"lineInterpolation": "smooth",
+						"lineWidth": 2,
+						"pointSize": 5,
+						"scaleDistribution": {
+							"type": "linear"
+						},
+						"showPoints": "auto",
+						"spanNulls": false,
+						"stacking": {
+							"group": "A",
+							"mode": "none"
+						},
+						"thresholdsStyle": {
+							"mode": "off"
+						}
+					},
+					"mappings": [],
+					"thresholds": {
+						"mode": "absolute",
+						"steps": [
+							{
+								"color": "green",
+								"value": null
+							}
+						]
+					}
+				},
+				"overrides": []
+			},
+			"gridPos": {
+				"h": 10,
+				"w": 12,
+				"x": 12,
+				"y": 10
+			},
+			"id": 4,
+			"options": {
+				"legend": {
+					"calcs": ["sum", "mean"],
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true
+				},
+				"tooltip": {
+					"mode": "single",
+					"sort": "none"
+				}
+			},
+			"targets": [
+				{
+					"datasource": {
+						"type": "grafana-postgresql-datasource",
+						"uid": "${DS_POSTGRESQL}"
+					},
+					"editorMode": "code",
+					"format": "table",
+					"rawQuery": true,
+					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', re.\"createdAt\") AS \"time\",\n  COUNT(lm.id)::bigint AS \"Learnings Used\"\nFROM learnings_metrics lm\nJOIN review_metrics rm ON lm.review_metrics_id = rm.id\nJOIN review_event re ON rm.review_event_id = re.id\nCROSS JOIN first_pr fp\nWHERE lm.org_id = '$org_id'\n  AND re.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(re.\"createdAt\")\nGROUP BY DATE_TRUNC('day', re.\"createdAt\")\nORDER BY \"time\" ASC;",
+					"refId": "A"
+				}
+			],
+			"title": "Daily Learnings Used",
+			"type": "timeseries"
+		}
+	],
+	"schemaVersion": 39,
+	"tags": ["usage", "metrics", "daily"],
+	"templating": {
+		"list": [
+			{
+				"current": {
+					"selected": false,
+					"text": "",
+					"value": ""
+				},
+				"description": "Organization ID",
+				"hide": 0,
+				"label": "Org ID",
+				"name": "org_id",
+				"options": [
+					{
+						"selected": true,
+						"text": "",
+						"value": ""
+					}
+				],
+				"query": "",
+				"skipUrlSync": false,
+				"type": "textbox"
+			}
+		]
+	},
+	"time": {
+		"from": "now-90d",
+		"to": "now"
+	},
+	"timepicker": {},
+	"timezone": "browser",
+	"title": "Daily Usage Trends",
+	"uid": "daily-usage-trends",
+	"version": 1,
+	"weekStart": ""
+}
