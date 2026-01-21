@@ -58,7 +58,7 @@
 				"type": "grafana-postgresql-datasource",
 				"uid": "${DS_POSTGRESQL}"
 			},
-			"description": "Daily acceptance rate of CodeRabbit suggestions since the first PR was raised.",
+			"description": "Daily acceptance rate of CodeRabbit suggestions since the first PR was raised. Supports both direct org IDs and self-hosted instance IDs.",
 			"fieldConfig": {
 				"defaults": {
 					"color": {
@@ -189,7 +189,7 @@
 					"editorMode": "code",
 					"format": "table",
 					"rawQuery": true,
-					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', sm.created_at) AS \"time\",\n  CASE \n    WHEN SUM(sm.total_suggestions) > 0 \n    THEN ROUND((SUM(sm.accepted_comment_count)::numeric / SUM(sm.total_suggestions)::numeric) * 100, 2)\n    ELSE 0 \n  END AS \"Daily Rate\"\nFROM suggestion_metrics sm\nCROSS JOIN first_pr fp\nWHERE sm.org_id = '$org_id'\n  AND sm.created_at >= fp.first_pr_date\n  AND $__timeFilter(sm.created_at)\nGROUP BY DATE_TRUNC('day', sm.created_at)\nORDER BY \"time\" ASC;",
+					"rawSql": "WITH orgs AS (\n  SELECT o.id\n  FROM organizations o\n  WHERE o.id = '$org_id'::uuid\n     OR o.self_hosted_instance_id = '$org_id'\n),\nfirst_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics pm\n  JOIN orgs ON pm.org_id = orgs.id\n)\nSELECT\n  DATE_TRUNC('day', sm.created_at) AS \"time\",\n  CASE \n    WHEN SUM(sm.total_suggestions) > 0 \n    THEN ROUND((SUM(sm.accepted_comment_count)::numeric / SUM(sm.total_suggestions)::numeric) * 100, 2)\n    ELSE 0 \n  END AS \"Daily Rate\"\nFROM suggestion_metrics sm\nJOIN orgs ON sm.org_id = orgs.id\nCROSS JOIN first_pr fp\nWHERE sm.created_at >= fp.first_pr_date\n  AND $__timeFilter(sm.created_at)\nGROUP BY DATE_TRUNC('day', sm.created_at)\nORDER BY \"time\" ASC;",
 					"refId": "A"
 				},
 				{
@@ -200,7 +200,7 @@
 					"editorMode": "code",
 					"format": "table",
 					"rawQuery": true,
-					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n),\ndaily_stats AS (\n  SELECT\n    DATE_TRUNC('day', sm.created_at) AS day,\n    SUM(sm.accepted_comment_count) AS accepted,\n    SUM(sm.total_suggestions) AS total\n  FROM suggestion_metrics sm\n  CROSS JOIN first_pr fp\n  WHERE sm.org_id = '$org_id'\n    AND sm.created_at >= fp.first_pr_date\n    AND $__timeFilter(sm.created_at)\n  GROUP BY DATE_TRUNC('day', sm.created_at)\n)\nSELECT\n  day AS \"time\",\n  CASE \n    WHEN SUM(total) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) > 0\n    THEN ROUND(\n      (SUM(accepted) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric /\n       SUM(total) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric) * 100, 2)\n    ELSE 0\n  END AS \"7-Day Rolling Avg\"\nFROM daily_stats\nORDER BY \"time\" ASC;",
+					"rawSql": "WITH orgs AS (\n  SELECT o.id\n  FROM organizations o\n  WHERE o.id = '$org_id'::uuid\n     OR o.self_hosted_instance_id = '$org_id'\n),\nfirst_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics pm\n  JOIN orgs ON pm.org_id = orgs.id\n),\ndaily_stats AS (\n  SELECT\n    DATE_TRUNC('day', sm.created_at) AS day,\n    SUM(sm.accepted_comment_count) AS accepted,\n    SUM(sm.total_suggestions) AS total\n  FROM suggestion_metrics sm\n  JOIN orgs ON sm.org_id = orgs.id\n  CROSS JOIN first_pr fp\n  WHERE sm.created_at >= fp.first_pr_date\n    AND $__timeFilter(sm.created_at)\n  GROUP BY DATE_TRUNC('day', sm.created_at)\n)\nSELECT\n  day AS \"time\",\n  CASE \n    WHEN SUM(total) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) > 0\n    THEN ROUND(\n      (SUM(accepted) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric /\n       SUM(total) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)::numeric) * 100, 2)\n    ELSE 0\n  END AS \"7-Day Rolling Avg\"\nFROM daily_stats\nORDER BY \"time\" ASC;",
 					"refId": "B"
 				}
 			],
@@ -212,7 +212,7 @@
 				"type": "grafana-postgresql-datasource",
 				"uid": "${DS_POSTGRESQL}"
 			},
-			"description": "Daily count of path instructions applied during reviews since the first PR was raised.",
+			"description": "Daily count of path instructions applied during reviews since the first PR was raised. Supports both direct org IDs and self-hosted instance IDs.",
 			"fieldConfig": {
 				"defaults": {
 					"color": {
@@ -293,7 +293,7 @@
 					"editorMode": "code",
 					"format": "table",
 					"rawQuery": true,
-					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', re.\"createdAt\") AS \"time\",\n  COUNT(pim.id)::bigint AS \"Path Instructions Used\"\nFROM path_instructions_metrics pim\nJOIN review_metrics rm ON pim.review_metrics_id = rm.id\nJOIN review_event re ON rm.review_event_id = re.id\nCROSS JOIN first_pr fp\nWHERE pim.org_id = '$org_id'\n  AND re.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(re.\"createdAt\")\nGROUP BY DATE_TRUNC('day', re.\"createdAt\")\nORDER BY \"time\" ASC;",
+					"rawSql": "WITH orgs AS (\n  SELECT o.id\n  FROM organizations o\n  WHERE o.id = '$org_id'::uuid\n     OR o.self_hosted_instance_id = '$org_id'\n),\nfirst_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics pm\n  JOIN orgs ON pm.org_id = orgs.id\n)\nSELECT\n  DATE_TRUNC('day', re.\"createdAt\") AS \"time\",\n  COUNT(pim.id)::bigint AS \"Path Instructions Used\"\nFROM path_instructions_metrics pim\nJOIN review_metrics rm ON pim.review_metrics_id = rm.id\nJOIN review_event re ON rm.review_event_id = re.id\nJOIN orgs ON pim.org_id = orgs.id\nCROSS JOIN first_pr fp\nWHERE re.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(re.\"createdAt\")\nGROUP BY DATE_TRUNC('day', re.\"createdAt\")\nORDER BY \"time\" ASC;",
 					"refId": "A"
 				}
 			],
@@ -305,7 +305,7 @@
 				"type": "grafana-postgresql-datasource",
 				"uid": "${DS_POSTGRESQL}"
 			},
-			"description": "Daily count of learnings created since the first PR was raised.",
+			"description": "Daily count of learnings created since the first PR was raised. Supports both direct org IDs and self-hosted instance IDs.",
 			"fieldConfig": {
 				"defaults": {
 					"color": {
@@ -386,7 +386,7 @@
 					"editorMode": "code",
 					"format": "table",
 					"rawQuery": true,
-					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', l.\"createdAt\") AS \"time\",\n  COUNT(l.id)::bigint AS \"Learnings Created\"\nFROM learnings l\nCROSS JOIN first_pr fp\nWHERE l.org_id = '$org_id'\n  AND l.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(l.\"createdAt\")\nGROUP BY DATE_TRUNC('day', l.\"createdAt\")\nORDER BY \"time\" ASC;",
+					"rawSql": "WITH orgs AS (\n  SELECT o.id\n  FROM organizations o\n  WHERE o.id = '$org_id'::uuid\n     OR o.self_hosted_instance_id = '$org_id'\n),\nfirst_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics pm\n  JOIN orgs ON pm.org_id = orgs.id\n)\nSELECT\n  DATE_TRUNC('day', l.\"createdAt\") AS \"time\",\n  COUNT(l.id)::bigint AS \"Learnings Created\"\nFROM learnings l\nJOIN orgs ON l.org_id = orgs.id\nCROSS JOIN first_pr fp\nWHERE l.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(l.\"createdAt\")\nGROUP BY DATE_TRUNC('day', l.\"createdAt\")\nORDER BY \"time\" ASC;",
 					"refId": "A"
 				}
 			],
@@ -398,7 +398,7 @@
 				"type": "grafana-postgresql-datasource",
 				"uid": "${DS_POSTGRESQL}"
 			},
-			"description": "Daily count of learnings applied during reviews since the first PR was raised.",
+			"description": "Daily count of learnings applied during reviews since the first PR was raised. Supports both direct org IDs and self-hosted instance IDs.",
 			"fieldConfig": {
 				"defaults": {
 					"color": {
@@ -479,7 +479,7 @@
 					"editorMode": "code",
 					"format": "table",
 					"rawQuery": true,
-					"rawSql": "WITH first_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics\n  WHERE org_id = '$org_id'\n)\nSELECT\n  DATE_TRUNC('day', re.\"createdAt\") AS \"time\",\n  COUNT(lm.id)::bigint AS \"Learnings Used\"\nFROM learnings_metrics lm\nJOIN review_metrics rm ON lm.review_metrics_id = rm.id\nJOIN review_event re ON rm.review_event_id = re.id\nCROSS JOIN first_pr fp\nWHERE lm.org_id = '$org_id'\n  AND re.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(re.\"createdAt\")\nGROUP BY DATE_TRUNC('day', re.\"createdAt\")\nORDER BY \"time\" ASC;",
+					"rawSql": "WITH orgs AS (\n  SELECT o.id\n  FROM organizations o\n  WHERE o.id = '$org_id'::uuid\n     OR o.self_hosted_instance_id = '$org_id'\n),\nfirst_pr AS (\n  SELECT MIN(pr_created) AS first_pr_date\n  FROM pr_metrics pm\n  JOIN orgs ON pm.org_id = orgs.id\n)\nSELECT\n  DATE_TRUNC('day', re.\"createdAt\") AS \"time\",\n  COUNT(lm.id)::bigint AS \"Learnings Used\"\nFROM learnings_metrics lm\nJOIN review_metrics rm ON lm.review_metrics_id = rm.id\nJOIN review_event re ON rm.review_event_id = re.id\nJOIN orgs ON lm.org_id = orgs.id\nCROSS JOIN first_pr fp\nWHERE re.\"createdAt\" >= fp.first_pr_date\n  AND $__timeFilter(re.\"createdAt\")\nGROUP BY DATE_TRUNC('day', re.\"createdAt\")\nORDER BY \"time\" ASC;",
 					"refId": "A"
 				}
 			],
@@ -497,7 +497,7 @@
 					"text": "",
 					"value": ""
 				},
-				"description": "Organization ID",
+				"description": "Organization ID or Self-Hosted Instance ID",
 				"hide": 0,
 				"label": "Org ID",
 				"name": "org_id",
